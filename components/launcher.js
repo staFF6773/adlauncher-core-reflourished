@@ -139,44 +139,52 @@ class Launcher {
       '-XX:HeapDumpPath=MojangTricksIntelDriversForPerformance_javaw.exe_minecraft.exe.heapdump',
     ];
 
-    if (custom !== null) {
-      const customFile = JSON.parse(
-        fs.readFileSync(
-          path.resolve(rootPath, this.downloader.versions, custom, `${custom}.json`),
-          { encoding: 'utf-8' }
-        )
-      );
+    // Handle OptiFine launch
+    if (optifineVersion) {
+      mainClass = 'net.minecraft.launchwrapper.Launch'; // OptiFine uses LaunchWrapper
+      const optifineJar = `OptiFine_${version}_HD_U_${optifineVersion}.jar`;
+      jvm.push(`-Dfml.ignoreInvalidMinecraftCertificates=true`);
+      jvm.push(`-Dfml.ignorePatchDiscrepancies=true`);
+      gameArgs.unshift('--tweakClass', 'optifine.OptiFineTweaker');
+      libs += path.resolve(rootPath, this.downloader.versions, version, optifineJar) + ';'; // Add OptiFine JAR to classpath
+  } else if (custom !== null) { 
+    const customFile = JSON.parse(
+      fs.readFileSync(
+        path.resolve(rootPath, this.downloader.versions, custom, `${custom}.json`),
+        { encoding: 'utf-8' }
+      )
+    );
 
-      customFile.libraries.forEach((element) => {
-        reqLibs.push(element.name.split(':').slice(-2).join('-').concat('.jar'));
-      });
+    customFile.libraries.forEach((element) => {
+      reqLibs.push(element.name.split(':').slice(-2).join('-').concat('.jar'));
+    });
 
-      mainClass = customFile.mainClass;
+    mainClass = customFile.mainClass;
 
-      if (!customFile.arguments) {
-        gameArgs = customFile.minecraftArguments.split(' ');
-      } else {
-        if (customFile.arguments.jvm) {
-          jvm.push(...customFile.arguments.jvm);
-        }
-        gameArgs.push(...customFile.arguments.game);
+    if (!customFile.arguments) {
+      gameArgs = customFile.minecraftArguments.split(' ');
+    } else {
+      if (customFile.arguments.jvm) {
+        jvm.push(...customFile.arguments.jvm);
       }
+      gameArgs.push(...customFile.arguments.game);
+    }
 
-      if (fs.existsSync(path.resolve(rootPath, 'options.txt'))) {
-        fs.unlinkSync(path.resolve(rootPath, 'options.txt'));
-      }
+    if (fs.existsSync(path.resolve(rootPath, 'options.txt'))) {
+      fs.unlinkSync(path.resolve(rootPath, 'options.txt'));
+    }
 
-      if (custom.includes('forge') && version.includes('1.20')) {
-        const matches = custom.split('-');
-        const forgeVersion = matches[matches.length - 1].replace('forge', '');
-        const result = `forge-${version}-${forgeVersion}-universal.jar`;
-        const resultClient = `forge-${version}-${forgeVersion}-client.jar`;
-        reqLibs.push(result, resultClient);
-        if (['1.20', '1.20.1'].includes(version)) {
-          reqLibs.push('mergetool-1.1.5-api.jar');
-        }
+    if (custom.includes('forge') && version.includes('1.20')) {
+      const matches = custom.split('-');
+      const forgeVersion = matches[matches.length - 1].replace('forge', '');
+      const result = `forge-${version}-${forgeVersion}-universal.jar`;
+      const resultClient = `forge-${version}-${forgeVersion}-client.jar`;
+      reqLibs.push(result, resultClient);
+      if (['1.20', '1.20.1'].includes(version)) {
+        reqLibs.push('mergetool-1.1.5-api.jar');
       }
     }
+  }
 
     let libs = this.#getJarFiles(
       path.resolve(rootPath, this.downloader.libraries),
