@@ -1,334 +1,331 @@
-const fs = require('fs'); // Module for file system operations
-const path = require('path'); // Module for file path manipulation
-let https = require('https'); // Module for making HTTPS requests
-https.globalAgent.maxSockets = 2; // Set the maximum number of simultaneous connections for HTTPS requests
-const Zip = require('adm-zip'); // Module for manipulating ZIP files
-const EventEmitter = require('events'); // Module for emitting events
-const shownNumbers = new Set(); // Object to avoid repeated numbers in the event
+const fs = require('fs');
+const path = require('path');
+let https = require('https');
+https.globalAgent.maxSockets = 2;
+const Zip = require('adm-zip');
+const EventEmitter = require('events');
+const shownNumbers = new Set();
 
-// Downloader class for downloading files related to Minecraft
 class Downloader {
-  constructor() {
-    // URL for different resources
-    this.url = {
-      meta: 'https://launchermeta.mojang.com/mc/game/version_manifest.json', // URL for the version metadata file
-      resource: 'https://resources.download.minecraft.net', // Base URL for downloading Minecraft resources
-    };
-    // Cache storage directory
-    this.cache = 'cache';
-    // Directory for storing downloaded versions
-    this.versions = 'versions';
-    // Directory for storing downloaded assets
-    this.assets = 'assets';
-    // Directory for storing downloaded libraries
-    this.libraries = 'libraries';
-    // Directory for storing downloaded native files
-    this.natives = 'natives';
-    // Define the event emitter
-    this.emisor = new EventEmitter();
-  }
-  
-  // Method to download a file from a given URL
-  async down(url, dir, name) {
-    try {
-      const response = new Promise((resolve, reject) => {
-        // Make an HTTPS request to get the file
-        const req = https.get(url, { timeout: 10000 }, (res) => {
-          // Destination file path
-          const filePath = path.join(dir, name);
-          // Create a write stream to write the file
-          const writeToFile = fs.createWriteStream(filePath);
-          // Pipe the response from the request to a file
-          res.pipe(writeToFile);
-  
-          // Handle the finish event of writing
-          writeToFile.on('finish', () => {
-            // Resolve the promise
-            resolve();
-          });
-  
-          // Handle writing errors
-          writeToFile.on('error', reject);
-        });
-  
-        // Handle request errors
-        req.on('error', reject);
-      });
-  
-      return response;
-    } catch (error) {
-      console.error('Download error:', error);
-      throw error;
+    constructor() {
+        this.url = {
+            meta: 'https://launchermeta.mojang.com/mc/game/version_manifest.json',
+            resource: 'https://resources.download.minecraft.net',
+            optifine: 'https://optifine.net/downloads'
+        };
+        this.cache = 'cache';
+        this.versions = 'versions';
+        this.assets = 'assets';
+        this.libraries = 'libraries';
+        this.natives = 'natives';
+        this.emisor = new EventEmitter();
     }
-  }
 
-  /**
-   * 
-   * @param {String} type Enter the type of list you need: vanilla - snapshot 
-   */
-  getVersions(type) {
-    return new Promise(async (resolve, reject) => {
-      https.get(this.url.meta, (res) => {
-        let data = '';
-  
-        res.on('data', async chunk => {
-          data += chunk;
-        });
-  
-        res.on('end', () => {
-          data = JSON.parse(data);
-  
-          switch (type) {
-            case "vanilla":
-              resolve(data.versions.filter(x => x.type === "release"));    
-              break;
-      
-            case "snapshot":
-              resolve(data.versions.filter(x => x.type === "snapshot"));    
-              break;
-          
-            default:
-              reject(new Error("Error obtaining available versions."));
-              break;
-          }
-        });
-      });
-    });
-  }
-
-  // Method to download the Minecraft version
-  #downloadVersion() {
-    return new Promise(async (resolve, reject) => {
-      // Emit the downloadFiles event
-      await this.emisor.emit('downloadFiles', 'Downloading main files.');
-      // Create cache directory if it doesn't exist
-      if(!fs.existsSync(path.join(this.root, this.cache, 'json'))) fs.mkdirSync(path.join(this.root, this.cache, 'json'), { recursive: true });
-      // Download the version metadata file
-      await this.down(this.url.meta, path.join(this.root, this.cache, 'json'), 'version_manifest.json');
-
-      // Check if the cache directory exists
-      if(fs.existsSync(path.join(this.root, this.cache))) {
-        // Read the version metadata file
-        let ver = JSON.parse(fs.readFileSync(path.join(this.root, this.cache, 'json', 'version_manifest.json'), { encoding: 'utf-8' }));
-        // Find the URL for the specific version
-        const verJson = ver.versions.find(x => x.type === 'release' && x.id === this.version).url;
-        // Throw an error if the version does not exist
-        if (!verJson) throw "The version does not exist.";
-        
-        // Create the version directory if it doesn't exist
-        if(!fs.existsSync(path.join(this.root,this.versions, this.version))) fs.mkdirSync(path.join(this.root, this.versions, this.version), { recursive: true});
+    async down(url, dir, name) {
         try {
-          // Download the JSON file for the specific version
-          await this.down(verJson, path.join(this.root, this.versions, this.version), `${this.version}.json`);
+            const response = new Promise((resolve, reject) => {
+                const req = https.get(url, { timeout: 10000 }, (res) => {
+                    const filePath = path.join(dir, name);
+                    const writeToFile = fs.createWriteStream(filePath);
+                    res.pipe(writeToFile);
+
+                    writeToFile.on('finish', () => {
+                        resolve();
+                    });
+
+                    writeToFile.on('error', reject);
+                });
+
+                req.on('error', reject);
+            });
+
+            return response;
         } catch (error) {
-          // Handle download errors
-          reject(new Error('Error downloading the version metadata file.', error));
+            console.error('Download error:', error);
+            throw error;
         }
-      }
-      // Resolve the promise
-      resolve();
-    });
-  }
+    }
 
-  // Method to download the Minecraft client
-  #downloadClient() {
-    return new Promise(async (resolve, reject) => {
-      // Emit the downloadFiles event
-      this.emisor.emit('downloadFiles', 'Downloading client.');
-      // Get the path of the version JSON file
-      this.file = path.join(this.root, this.versions, this.version, `${this.version}.json`);
-      // Read the version JSON file
-      this.file = JSON.parse(fs.readFileSync(this.file, { encoding: 'utf-8' }));
-      
-      // Get the client URL
-      const client = this.file.downloads.client.url;
-      // Create the version directory if it doesn't exist
-      if(!fs.existsSync(path.join(this.root, this.versions, this.version))) fs.mkdirSync(path.join(this.root, this.versions, this.version));
-      try {
-        // Download the client .jar file
-        await this.down(client, path.join(this.root, this.versions, this.version), `${this.version}.jar`);
-      } catch (error) {
-        // Handle download errors
-        reject(new Error('Error downloading the version .jar file.', error));
-      }
-      // Resolve the promise
-      resolve();
-    });
-  }
+    getVersions(type) {
+        return new Promise(async (resolve, reject) => {
+            https.get(this.url.meta, (res) => {
+                let data = '';
 
-  // Method to download Minecraft assets
-  #downloadAssets() {
-    return new Promise(async (resolve, reject) => {
-      // Emit the downloadFiles event
-      this.emisor.emit('downloadFiles', 'Downloading assets.');
-      // Create assets index directory if it doesn't exist
-      if(!fs.existsSync(path.join(this.root, this.assets, 'indexes'))) fs.mkdirSync(path.join(this.root, this.assets, 'indexes'), { recursive: true });
-      const totalSize = this.file.assetIndex.totalSize;
-      // Download the assets index file
-      await this.down(this.file.assetIndex.url, path.join(this.root, this.assets, 'indexes'), `${this.version}.json`);
-      // Download the cached assets index file
-      await this.down(this.file.assetIndex.url, path.join(this.root, this.cache, 'json'), `${this.version}.json`);
+                res.on('data', async chunk => {
+                    data += chunk;
+                });
 
-      // Read the assets index file
-      const assetFile = JSON.parse(fs.readFileSync(path.join(this.root, this.assets, 'indexes', `${this.version}.json`)));
-      // Create assets objects directory if it doesn't exist
-      if(!fs.existsSync(path.join(this.root, this.assets, 'objects'))) fs.mkdirSync(path.join(this.root, this.assets, 'objects'));
+                res.on('end', () => {
+                    data = JSON.parse(data);
 
-      // Define variables for the percentDownloaded event
-      let size = 0, percentage;
+                    switch (type) {
+                        case "vanilla":
+                            resolve(data.versions.filter(x => x.type === "release"));
+                            break;
 
-      // Iterate over the asset objects
-      for (const key in assetFile.objects) {
-        if (assetFile.objects.hasOwnProperty.call(assetFile.objects, key)) {
-          const fileName = assetFile.objects[key]; // object
-          const fileSize = fileName.size; // size of the object
-          const fileHash = fileName.hash; // name of the object
-          const fileSubHash = fileHash.substring(0, 2); // folder name of the object
-          
-          // Create subhash directory if it doesn't exist
-          if(!fs.existsSync(path.join(this.root, this.assets, 'objects', fileSubHash))) fs.mkdirSync(path.join(this.root, this.assets, 'objects', fileSubHash));
-          try {
-            // Download asset resources
-            this.down(`${this.url.resource}/${fileSubHash}/${fileHash}`, path.join(this.root, this.assets, 'objects', fileSubHash), fileName.hash).then(() => { 
-              // Update the percentDownloaded variables
-              size += fileSize; 
-              percentage = Math.floor(((size / totalSize) * 100)); 
-              if (!shownNumbers.has(percentage)) {
-                this.emisor.emit('percentDownloaded', `${percentage}% downloaded!`);
-                shownNumbers.add(percentage);
-                if(percentage === 100) {
-                  resolve();
+                        case "snapshot":
+                            resolve(data.versions.filter(x => x.type === "snapshot"));
+                            break;
+
+                        default:
+                            reject(new Error("Error obtaining available versions."));
+                            break;
+                    }
+                });
+            });
+        });
+    }
+
+    // New method to fetch OptiFine versions
+    getOptiFineVersions() {
+        return new Promise((resolve, reject) => {
+            https.get(this.url.optifine, (res) => {
+                let data = '';
+                res.on('data', (chunk) => {
+                    data += chunk;
+                });
+                res.on('end', () => {
+                    // Basic parsing to extract OptiFine version information
+                    const matches = data.match(/<td><a href=".*">(.*)<\/a><\/td>/g);
+                    if (matches) {
+                        const versions = matches.map(match => {
+                            const versionMatch = match.match(/<td><a href=".*">(.*)<\/a><\/td>/);
+                            return versionMatch ? versionMatch[1] : null;
+                        }).filter(version => version !== null);
+                        resolve(versions);
+                    } else {
+                        reject(new Error("Failed to parse OptiFine versions"));
+                    }
+                });
+            }).on('error', reject);
+        });
+    }
+
+    #downloadVersion() {
+        return new Promise(async (resolve, reject) => {
+            await this.emisor.emit('downloadFiles', 'Downloading main files.');
+            if(!fs.existsSync(path.join(this.root, this.cache, 'json'))) fs.mkdirSync(path.join(this.root, this.cache, 'json'), { recursive: true });
+            await this.down(this.url.meta, path.join(this.root, this.cache, 'json'), 'version_manifest.json');
+
+            if(fs.existsSync(path.join(this.root, this.cache))) {
+                let ver = JSON.parse(fs.readFileSync(path.join(this.root, this.cache, 'json', 'version_manifest.json'), { encoding: 'utf-8' }));
+                const verJson = ver.versions.find(x => x.type === 'release' && x.id === this.version).url;
+                if (!verJson) throw "The version does not exist.";
+
+                if(!fs.existsSync(path.join(this.root,this.versions, this.version))) fs.mkdirSync(path.join(this.root, this.versions, this.version), { recursive: true});
+                try {
+                    await this.down(verJson, path.join(this.root, this.versions, this.version), `${this.version}.json`);
+                } catch (error) {
+                    reject(new Error('Error downloading the version metadata file.', error));
                 }
-              }
-            }).catch(e => reject(new Error('ERROR', e)));
-          } catch (error) {
-            // Handle download errors
-            reject(new Error('Error downloading the version resources.', error));
+            }
+            resolve();
+        });
+    }
+
+    #downloadClient() {
+        return new Promise(async (resolve, reject) => {
+            this.emisor.emit('downloadFiles', 'Downloading client.');
+            this.file = path.join(this.root, this.versions, this.version, `${this.version}.json`);
+            this.file = JSON.parse(fs.readFileSync(this.file, { encoding: 'utf-8' }));
+
+            const client = this.file.downloads.client.url;
+            if(!fs.existsSync(path.join(this.root, this.versions, this.version))) fs.mkdirSync(path.join(this.root, this.versions, this.version));
+            try {
+                await this.down(client, path.join(this.root, this.versions, this.version), `${this.version}.jar`);
+            } catch (error) {
+                reject(new Error('Error downloading the version .jar file.', error));
+            }
+            resolve();
+        });
+    }
+
+    #downloadAssets() {
+        return new Promise(async (resolve, reject) => {
+            this.emisor.emit('downloadFiles', 'Downloading assets.');
+    
+            // Verificar y crear directorios si es necesario
+            if (!fs.existsSync(path.join(this.root, this.assets))) {
+                fs.mkdirSync(path.join(this.root, this.assets), { recursive: true });
+            }
+            if (!fs.existsSync(path.join(this.root, this.assets, 'indexes'))) {
+                fs.mkdirSync(path.join(this.root, this.assets, 'indexes'), { recursive: true });
+            }
+    
+            try {
+                const totalSize = this.file.assetIndex.totalSize;
+                await this.down(this.file.assetIndex.url, path.join(this.root, this.assets, 'indexes'), `${this.version}.json`);
+                await this.down(this.file.assetIndex.url, path.join(this.root, this.cache, 'json'), `${this.version}.json`);
+    
+                const assetFile = JSON.parse(fs.readFileSync(path.join(this.root, this.assets, 'indexes', `${this.version}.json`)));
+    
+                if (!fs.existsSync(path.join(this.root, this.assets, 'objects'))) {
+                    fs.mkdirSync(path.join(this.root, this.assets, 'objects'));
+                }
+    
+                let size = 0, percentage;
+    
+                for (const key in assetFile.objects) {
+                    if (assetFile.objects.hasOwnProperty.call(assetFile.objects, key)) {
+                        const fileName = assetFile.objects[key];
+                        const fileSize = fileName.size;
+                        const fileHash = fileName.hash;
+                        const fileSubHash = fileHash.substring(0, 2);
+    
+                        if (!fs.existsSync(path.join(this.root, this.assets, 'objects', fileSubHash))) {
+                            fs.mkdirSync(path.join(this.root, this.assets, 'objects', fileSubHash));
+                        }
+    
+                        try {
+                            await this.down(`${this.url.resource}/${fileSubHash}/${fileHash}`, path.join(this.root, this.assets, 'objects', fileSubHash), fileName.hash);
+                            size += fileSize;
+                            percentage = Math.floor(((size / totalSize) * 100));
+    
+                            if (!shownNumbers.has(percentage)) {
+                                this.emisor.emit('percentDownloaded', `${percentage}% downloaded!`);
+                                shownNumbers.add(percentage);
+    
+                                if (percentage === 100) {
+                                    resolve();
+                                }
+                            }
+                        } catch (error) {
+                            console.error('Error downloading asset:', error); // Manejo de errores individual
+                            // Puedes optar por continuar o manejar el error de otra manera
+                        }
+                    }
+                }
+            } catch (error) {
+                reject(new Error('Error downloading or processing assets:', error));
+            }
+        });
+    }
+
+    #downloadNatives() {
+      return new Promise((resolve, reject)  => {
+        this.emisor.emit('downloadFiles', 'Downloading natives.');
+        if(!fs.existsSync(path.join(this.root, this.natives))) fs.mkdirSync(path.join(this.root, this.natives));
+
+        this.file.libraries.forEach(async element => {
+          const el = element.downloads.classifiers;
+          const natives = (typeof el === 'object' && (el['natives-windows'] ? el['natives-windows'] : el['natives-windows-64']));
+          if(natives) {
+            try {
+              await this.down(natives.url, path.join(this.root, this.natives), path.basename(natives.path));
+
+              if(this.version === '1.8' && natives.url.includes('nightly')) return fs.unlinkSync(path.join(this.root, this.natives, path.basename(natives.path)));
+              new Zip(path.join(path.join(this.root, this.natives), path.basename(natives.path))).extractAllTo(path.join(this.root, this.natives, this.version), true);
+
+              fs.unlinkSync(path.join(this.root, this.natives, path.basename(natives.path)));
+            } catch (error) {
+              reject(new Error('Error downloading native files for the version.', error));
+            }
           }
-        }
-      }
-    });
-  }
-
-  // Method to download native files
-  #downloadNatives() {
-    return new Promise((resolve, reject) => {
-      // Emit the downloadFiles event
-      this.emisor.emit('downloadFiles', 'Downloading natives.');
-      // Create natives directory if it doesn't exist
-      if(!fs.existsSync(path.join(this.root, this.natives))) fs.mkdirSync(path.join(this.root, this.natives));
-
-      // Iterate over the libraries and download native files if available
-      this.file.libraries.forEach(async element => {
-        const el = element.downloads.classifiers;
-        const natives = (typeof el === 'object' && (el['natives-windows'] ? el['natives-windows'] : el['natives-windows-64']));
-        if(natives) {
-          try {
-            // Download the native file
-            await this.down(natives.url, path.join(this.root, this.natives), path.basename(natives.path));
-  
-            // Delete the native file if the version is 1.8 and it is a nightly build
-            if(this.version === '1.8' && natives.url.includes('nightly')) return fs.unlinkSync(path.join(this.root, this.natives, path.basename(natives.path)));
-            // Extract the ZIP file
-            new Zip(path.join(path.join(this.root, this.natives), path.basename(natives.path))).extractAllTo(path.join(this.root, this.natives, this.version), true);
-
-            // Delete the ZIP file
-            fs.unlinkSync(path.join(this.root, this.natives, path.basename(natives.path)));
-          } catch (error) {
-            // Handle download errors
-            reject(new Error('Error downloading native files for the version.', error));
-          }
-        }
+        });
+        resolve();
       });
-      // Resolve the promise
-      resolve();
-    });
-  }
+    }
 
-  // Method to download libraries
-  #downloadLibraries() {
-    return new Promise((resolve, reject) => {
-      // Emit the downloadFiles event
-      this.emisor.emit('downloadFiles', 'Downloading libraries.');
-      // Create libraries directory if it doesn't exist
-      if(!fs.existsSync(path.join(this.root, this.libraries))) fs.mkdirSync(path.join(this.root, this.libraries));
-      // Iterate over the libraries and download them
-      this.file.libraries.forEach(async element => {
-        if(element.downloads.artifact !== undefined) {
-          const jarFile = element.downloads.artifact.path;
-          const parts = jarFile.split('/');
-          parts.pop();
-          const libRoot = parts.join('/');
-          const libName = path.basename(jarFile);
-          // Create directory for the library if it doesn't exist
-          if(!fs.existsSync(path.join(this.root, this.libraries, libRoot))) fs.mkdirSync(path.join(this.root, this.libraries, libRoot), { recursive: true });
-          try {
-            // Download the library
-            await this.down(element.downloads.artifact.url, path.join(this.root, this.libraries, libRoot), libName);
-          } catch (error) {
-            // Handle download errors
-            reject(new Error('Error downloading the libraries for the version.', error));
-          }
-        }
-      });
-      // Resolve the promise
-      resolve();
-    });
-  }
+    // New method to download OptiFine
+    async #downloadOptiFine() {
+      if (!this.optifineVersion) return; // Skip if no OptiFine version specified
 
-  /**
-   * Emits the event
-   * @param {String} event Event name
-   * @param {String} args Arguments to be passed to the event
-   * @return {String} Event data
-   */
-  emisor(event, args) {
-    this.emisor.emit(event, ...args);
-  }
+      this.emisor.emit('downloadFiles', 'Downloading OptiFine.');
 
-  /**
-   * Listens to the event
-   * @param {String} event Event name
-   * @param {String} callback Custom function 
-   * @return {String} Event data
-   */
-  on(event, callback) {
-    this.emisor.on(event, callback);
-  }
+      // Construct the OptiFine download URL based on MC version and OptiFine version
+      const optifineUrl = `https://optifine.net/adloadx?f=OptiFine_${this.version}_HD_U_${this.optifineVersion}.jar`; 
 
-  /**
-   * Main method to download all resources for a Minecraft version
-   * @param {String} version Enter the version you want to download
-   * @param {String} root Path where the download will take place
-   */
-  download(version, root) {
-    this.version = version;
-    this.root = root;
-    return new Promise(async (resolve, reject) => {
-      // Check if a version was provided
-      if (!version) {
-        reject(new Error("No version provided."));
+      try {
+          await this.down(optifineUrl, path.join(this.root, this.versions, this.version), `OptiFine_${this.version}_HD_U_${this.optifineVersion}.jar`);
+      } catch (error) {
+          throw new Error('Error downloading OptiFine.', error);
       }
+    }
 
-      // Start downloading the version
-      await this.#downloadVersion();
-      this.emisor.emit('downloadFiles', `Minecraft ${version} is now downloading.`);
-      await this.#downloadClient();
-      this.emisor.emit('downloadFiles', 'Client downloaded.');
-      await this.#downloadAssets();
-      this.emisor.emit('downloadFiles', 'Assets downloaded.');
-      await this.#downloadLibraries();
-      this.emisor.emit('downloadFiles', 'Libraries downloaded.');
-      await this.#downloadNatives();
-      this.emisor.emit('downloadFiles', 'Natives downloaded.');
-      this.emisor.emit('downloadFiles', 'All files are downloaded.');
-      // Resolve the promise and clear the event emitters
-      this.emisor.removeAllListeners('downloadFiles');
-      this.emisor.removeAllListeners('percentDownloaded');
-      shownNumbers.clear();
-      resolve();
-    });
-  }
-};
+    // Method to download libraries
+    #downloadLibraries() {
+      return new Promise((resolve, reject) => {
+        // Emit the downloadFiles event
+        this.emisor.emit('downloadFiles', 'Downloading libraries.');
+        // Create libraries directory if it doesn't exist
+        if(!fs.existsSync(path.join(this.root, this.libraries))) fs.mkdirSync(path.join(this.root, this.libraries));
+        // Iterate over the libraries and download them
+        this.file.libraries.forEach(async element => {
+          if(element.downloads.artifact !== undefined) {
+            const jarFile = element.downloads.artifact.path;
+            const parts = jarFile.split('/');
+            parts.pop();
+            const libRoot = parts.join('/');
+            const libName = path.basename(jarFile);
+            // Create directory for the library if it doesn't exist
+            if(!fs.existsSync(path.join(this.root, this.libraries, libRoot))) fs.mkdirSync(path.join(this.root, this.libraries, libRoot), { recursive: true });
+            try {
+              // Download the library
+              await this.down(element.downloads.artifact.url, path.join(this.root, this.libraries, libRoot), libName);
+            } catch (error) {
+              // Handle download errors
+              reject(new Error('Error downloading the libraries for the version.', error));
+            }
+          }
+        });
+        // Resolve the promise
+        resolve();
+      });
+    }
 
-module.exports = Downloader; // Exporting the Downloader class for use in other modules
+    emisor(event, args) {
+      this.emisor.emit(event, ...args);
+      }
+      
+      on(event, callback) {
+      this.emisor.on(event, callback);
+      }
+      
+      /**
+      * Main method to download all resources for a Minecraft version, including OptiFine if specified
+      * @param {String} version Enter the version you want to download
+      * @param {String} root Path where the download will take place
+      * @param {String} optifineVersion (Optional) Specify the OptiFine version to download
+      */
+
+      download(version, root, optifineVersion = null) {
+        this.version = version;
+        this.root = root;
+        this.optifineVersion = optifineVersion; // Store the OptiFine version
+        
+        return new Promise(async (resolve, reject) => {
+            if (!version) {
+                reject(new Error("No version provided."));
+            }
+        
+            await this.#downloadVersion();
+            this.emisor.emit('downloadFiles', `Minecraft ${version} is now downloading.`);
+            await this.#downloadClient();
+            this.emisor.emit('downloadFiles', 'Client downloaded.');
+            await this.#downloadAssets();
+            this.emisor.emit('downloadFiles', 'Assets downloaded.');
+            await this.#downloadLibraries();
+            this.emisor.emit('downloadFiles', 'Libraries downloaded.');
+            await this.#downloadNatives();
+            this.emisor.emit('downloadFiles', 'Natives downloaded.');
+        
+            // Download OptiFine if specified
+            if (optifineVersion) {
+                try {
+                    await this.#downloadOptiFine();
+                    this.emisor.emit('downloadFiles', 'OptiFine downloaded.');
+                } catch (error) {
+                    reject(error); // Pass the error up to the caller
+                }
+            }
+        
+            this.emisor.emit('downloadFiles', 'All files are downloaded.');
+            this.emisor.removeAllListeners('downloadFiles');
+            this.emisor.removeAllListeners('percentDownloaded');
+            shownNumbers.clear();
+            resolve();
+        });
+        }
+        };
+        
+        module.exports = Downloader;
