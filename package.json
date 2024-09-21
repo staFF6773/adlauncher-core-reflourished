@@ -1,0 +1,33 @@
+{
+  "name": "adlauncher-core",
+  "version": "1.0.0",
+  "description": "A module that allows downloading and running minecraft java with node.js",
+  "keywords": [
+    "minecraft",
+    "minecraft-launcher",
+    "minecraft-node",
+    "minecraft-core",
+    "javascript",
+    "node",
+    "nodejs",
+    "minecraft-launcher-core",
+    "optifine",
+    "forge",
+    "fabric"
+  ],
+  "license": "MIT",
+  "author": "dani_adbg, staFF6773, avidevs, santiagolxxowo",
+  "main": "components/Handler.js",
+  "homepage": "https://github.com/staFF6773/adlauncher-core-reflourished",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/staFF6773/adlauncher-core-reflourished.git"
+  },
+  "scripts": {
+    "test": "node test.js"
+  },
+  "dependencies": {
+    "adm-zip": "^0.5.10",
+    "uuid": "^9.0.1"
+  }
+}
