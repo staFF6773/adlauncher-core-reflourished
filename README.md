@@ -6,9 +6,9 @@ This is a simple minecraft-core for download and play minecraft with node.js. / 
 
 This is a project developed in Node in charge of getting the files to run minecraft Vanilla, OptiFine, Forge and Fabric. The package will be updated taking into account suggestions and bug reports.
 
-The package is in its official version `1.3`, with support for OptiFine, Forge and Fabric.
+The package is in its official version `1.0.0`, with support for OptiFine, Forge and Fabric.
 
-The `1.3` update contains an event manager with which you can check the data sent by the program and the `getVersions` function to get the minecraft versions.
+The `1.0.0` update contains an event manager with which you can check the data sent by the program and the `getVersions` function to get the minecraft versions.
 
 The project is not enabled for playing on premium servers (piracy is not supported).
 
