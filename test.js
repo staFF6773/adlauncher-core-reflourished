@@ -16,4 +16,7 @@ const launchOptions = {
   java8: 'C:/Program Files/Java/jre-1.8/bin/java.exe', // Exact location of the java.exe v8 file (OPTIONAL)
 };
 
+// Adding a message before launching Minecraft
+console.log(`Launching Minecraft version ${launchOptions.version} for user ${launchOptions.username}...`);
+
 launcher.launch(launchOptions); // Starts Minecraft with the declared options
