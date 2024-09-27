@@ -19,4 +19,4 @@ const launchOptions = {
 // Adding a message before launching Minecraft
 console.log(`Launching Minecraft version ${launchOptions.version} for user ${launchOptions.username}...`);
 
-launcher.launch(launchOptions); // Starts Minecraft with the declared options
+launcher.launch(launchOptions); // Starts Minecraft with the declared options.
